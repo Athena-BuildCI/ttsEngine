@@ -1,0 +1,50 @@
+name: Android CI - Build and Sign Release
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: 'gradle'
+
+      - name: Decode Keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_FILENAME: ${{ secrets.KEYSTORE_FILENAME }}
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_FILENAME"
+      - name: Create Keystore Properties File
+        env:
+          KEYSTORE_PROPERTIES_CONTENT: ${{ secrets.KEYSTORE_PROPERTIES_CONTENT }}
+        run: |
+          echo "$KEYSTORE_PROPERTIES_CONTENT" > keystore.properties
+      - name: Grant Gradlew execution permission
+        run: chmod +x ./gradlew
+
+      - name: Build Release App
+        run: ./gradlew assembleRelease
+
+      - name: Upload Release App
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release
+          path: app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+      - name: 清理签名密钥库目录 (Clean up keystore directory)
+        # if: always() 确保无论前面步骤成功与否都尝试执行此步骤
+        # && steps.prepare_keystore.outcome == 'success' 确保仅当准备密钥库步骤成功执行后才清理
+        if: always() && steps.prepare_keystore.outcome == 'success'
+        run: |
+          echo "正在清理签名密钥库目录..."
+          rm -rf keystore
